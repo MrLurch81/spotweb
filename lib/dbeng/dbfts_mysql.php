@@ -5,7 +5,7 @@ class dbfts_mysql extends dbfts_abs {
 	// Array copied from http://www.linein.org/blog/2008/11/10/mysql-full-text-stopwords-array/
 	private $stop_words = array('a\'s', 'able', 'about', 'above', 'according', 'accordingly', 'across', 'actually',
 							'after', 'afterwards', 'again', 'against', 'ain\'t', 'all', 'allow', 'allows', 'almost', 
-							'alone', 'along', 'already', 'also', 'although', 'always', 'am', 'among', 'amongst', 'an',  
+							'alone', 'along', 'already', 'also', 'although', 'always', 'am', 'among', 'amongst', 'an',	
 							'and', 'another', 'any', 'anybody', 'anyhow', 'anyone', 'anything', 'anyway', 'anyways', 
 							'anywhere', 'apart', 'appear', 'appreciate', 'appropriate', 'are', 'aren\'t', 'around', 'as', 
 							'aside', 'ask', 'asking', 'associated', 'at', 'available', 'away', 'awfully', 'be', 'became', 
@@ -73,7 +73,10 @@ class dbfts_mysql extends dbfts_abs {
 		 */
 		$filterValueSql = array();
 		$sortFields = array();
-        $addFields = array();
+		$addFields = array();
+		
+		$matchPartBool = array();
+		$matchPartNat  = array();
 
 		/*
 		 * MySQL's fultxt search has a minimum length of words for indexes. Per default this is 
@@ -86,7 +89,7 @@ class dbfts_mysql extends dbfts_abs {
 		$serverSetting = $this->_db->arrayQuery("SHOW VARIABLES WHERE variable_name = 'ft_min_word_len'");
 		$minWordLen = $serverSetting[0]['Value'];
 
-        //var_dump($searchFields);
+		// var_dump($searchFields);
 
 		foreach($searchFields as $searchItem) {
 			$hasTooShortWords = false;
@@ -94,7 +97,7 @@ class dbfts_mysql extends dbfts_abs {
 			$hasStopWords = false;
 			$hasNoStopWords = false;
 			$hasSearchOpAsTerm = false;
-            $hasPhraseWithOnlyInvalids = false;
+			$hasPhraseWithOnlyInvalids = false;
 
 			$searchMode = "match-natural";
 			$searchValue = trim($searchItem['value']);
@@ -110,7 +113,7 @@ class dbfts_mysql extends dbfts_abs {
 			 * There is one exception, if a phrase search contains ONLY stop words, we cannot
 			 * use the FTS at all so we should be aware of that.
 			 */
-            $tempSearchValue = str_replace(array('+', '-', '"', '(', ')', 'AND', 'NOT', 'OR'), '', $searchValue);
+			$tempSearchValue = str_replace(array('+', '-', '"', '(', ')', 'AND', 'NOT', 'OR'), '', $searchValue);
 			$termList = explode(' ', $tempSearchValue);
 			foreach($termList as $term) {
 				if ((strlen($term) < $minWordLen) && (strlen($term) > 0)) {
@@ -118,18 +121,18 @@ class dbfts_mysql extends dbfts_abs {
 				} # if
 
 				if (strlen($term) >= $minWordLen) {
-                    $hasLongEnoughWords = true;
+					$hasLongEnoughWords = true;
 				} # if
 
-                /*
-                 * If the term is a stopword (things like: the, it, ...) we have to
-                 * fallback to a like search as well.
-                 */
-                if (in_array(strtolower($term), $this->stop_words) !== false) {
-                    $hasStopWords = true;
-                } else {
-                    $hasNoStopWords = true;
-                }# if
+				/*
+				 * If the term is a stopword (things like: the, it, ...) we have to
+				 * fallback to a like search as well.
+				 */
+				if (in_array(strtolower($term), $this->stop_words) !== false) {
+					$hasStopWords = true;
+				} else {
+					$hasNoStopWords = true;
+				}# if
 			} # foreach
 
 			/*
@@ -177,56 +180,56 @@ class dbfts_mysql extends dbfts_abs {
 				 * When there are boolean operators in the string, it's an 
 				 * boolean search
 				 */
-                if (strlen($strippedTerm[0]) > 0) {
-				    if (strpos('+-~<>', $strippedTerm[0]) !== false) {
-					    $searchMode = 'match-boolean';
-                        $strippedTerm = trim($strippedTerm, "+-");
-				    } # if
-                }
+				if (strlen($strippedTerm[0]) > 0) {
+					if (strpos('+-~<>', $strippedTerm[0]) !== false) {
+						$searchMode = 'match-boolean';
+						$strippedTerm = trim($strippedTerm, "+-");
+					} # if
+				}
 
-                if (strlen(substr($strippedTerm,-1)) > 0) {
-				    if (strpos('*', substr($strippedTerm, -1)) !== false) {
-					    $searchMode = 'match-boolean';
-                        $strippedTerm = trim($strippedTerm, "*");
-				    } # if
-                }
+				if (strlen(substr($strippedTerm,-1)) > 0) {
+					if (strpos('*', substr($strippedTerm, -1)) !== false) {
+						$searchMode = 'match-boolean';
+						$strippedTerm = trim($strippedTerm, "*");
+					} # if
+				}
 
-                if (strlen(substr($term,-1)) > 0) {
-				    if (strpos('"', substr($term, -1)) !== false) {
-					    $searchMode = 'match-boolean';
-				    } # if
-                }
+				if (strlen(substr($term,-1)) > 0) {
+					if (strpos('"', substr($term, -1)) !== false) {
+						$searchMode = 'match-boolean';
+					} # if
+				}
 
-                /*
-                 * We get the complete phrase here, we need to look into
-                 * the phrase terms, because if it only contains invalid terms
-                 * (eg: only stopwords, only shortwords, or a combination thereof),
-                 * we must disable the FTS completely.
-                 *
-                 */
-                if ((!$hasPhraseWithOnlyInvalids) && ($term[0] == '"')) {
-                    $tmpFoundValidTerms = false;
+				/*
+				 * We get the complete phrase here, we need to look into
+				 * the phrase terms, because if it only contains invalid terms
+				 * (eg: only stopwords, only shortwords, or a combination thereof),
+				 * we must disable the FTS completely.
+				 *
+				 */
+				if ((!$hasPhraseWithOnlyInvalids) && ($term[0] == '"')) {
+					$tmpFoundValidTerms = false;
 
-                    $tmpTermList = explode(' ', $strippedTerm);
-                    foreach($tmpTermList as $tmpTerm) {
-                        if (strlen($tmpTerm) >= $minWordLen) {
-                            if (in_array(strtolower($tmpTerm), $this->stop_words) === false) {
-                                $tmpFoundValidTerms = true;
-                            } # if
-                        } # if
-                    } # foreach
+					$tmpTermList = explode(' ', $strippedTerm);
+					foreach($tmpTermList as $tmpTerm) {
+						if (strlen($tmpTerm) >= $minWordLen) {
+							if (in_array(strtolower($tmpTerm), $this->stop_words) === false) {
+								$tmpFoundValidTerms = true;
+							} # if
+						} # if
+					} # foreach
 
-                    if (!$tmpFoundValidTerms) {
-                        $hasPhraseWithOnlyInvalids = true;
-                    } # if
-                } # if
+					if (!$tmpFoundValidTerms) {
+						$hasPhraseWithOnlyInvalids = true;
+					} # if
+				} # if
 			} # foreach
 
 			# Actually determine the searchmode
 			/* 
 			 * Test cases:
 			 *
-			 * 		9th Company
+			 *		9th Company
 			 *		Ubuntu 11
 			 *		Top 40
 			 *		"Top 40"
@@ -234,90 +237,94 @@ class dbfts_mysql extends dbfts_abs {
 			 *		Sex and the city 
 			 *		Rio
 			 *		"sex and the city 2"
- 			 *		Just Go With It (fallback naar like, enkel stopwoorden of te kort)
+			 *		Just Go With It (fallback naar like, enkel stopwoorden of te kort)
 			 *		"Just Go With It" (fallback naar like, en quotes gestripped)
-			 *      +"taken 2" +(2012) (fallback naar like, en quotes gestripped - enkel stop woorden maar operators)
+			 *		+"taken 2" +(2012) (fallback naar like, en quotes gestripped - enkel stop woorden maar operators)
 			 *		+empire +sun
 			 *		x-art (like search because it contains an -)
 			 *		50/50 (like search because it contains an /)
-			 *      Arvo -Lamentate (natural without like)
-			 *      +"Phantom" +(2013)          <- Shouldn't use a LIKE per se
-			 *      "The Top"                   <- Should use a LIKE as its only keywords
-			 *      +"Warehouse 13" +S04        <- Shouldn't use a LIKE per se
+			 *		Arvo -Lamentate (natural without like)
+			 *		+"Phantom" +(2013)			<- Shouldn't use a LIKE per se
+			 *		"The Top"					<- Should use a LIKE as its only keywords
+			 *		+"Warehouse 13" +S04		<- Shouldn't use a LIKE per se
 			 */
 
-            if ($hasPhraseWithOnlyInvalids) {
-                $searchMode = 'normal';
-            } elseif (($hasTooShortWords || $hasStopWords) && ($hasLongEnoughWords || $hasNoStopWords) && (!$hasSearchOpAsTerm)) {
+			if ($hasPhraseWithOnlyInvalids) {
+				$searchMode = 'normal';
+			} elseif (($hasTooShortWords || $hasStopWords) && ($hasLongEnoughWords || $hasNoStopWords) && (!$hasSearchOpAsTerm)) {
 				if (($hasStopWords && !$hasNoStopWords) || ($hasTooShortWords && !$hasLongEnoughWords)) {
 					$searchMode = 'normal';
-				} else {
-					$searchMode = 'both-' . $searchMode;
+				//} else {
+					//$searchMode = 'both-' . $searchMode;
 				} # else
 			} elseif ((($hasTooShortWords || $hasStopWords) && (!$hasLongEnoughWords && !$hasNoStopWords)) || ($hasSearchOpAsTerm)) {
 				$searchMode = 'normal';
 			} # else
 
-/*
-            echo 'hasStopWords              : ' . (int) $hasStopWords . '<br>';
-            echo 'hasLongEnoughWords        : ' . (int) $hasLongEnoughWords . '<br>';
-            echo 'hasTooShortWords          : ' . (int) $hasTooShortWords . '<br>';
-            echo 'hasNoStopWords            : ' . (int) $hasNoStopWords . '<br>';
-            echo 'hasSearchOpAsTerm         : ' . (int) $hasSearchOpAsTerm . '<br>';
-            echo 'hasPhraseWithOnlyInvalids : ' . (int) $hasPhraseWithOnlyInvalids . '<br>';
-            echo 'searchmode                : ' . $searchMode . '<br>';
-            die();
-*/
+			/* 
+			echo 'searchValue				: ' . $searchValue . '<br>';
+			echo 'hasStopWords				: ' . (int) $hasStopWords . '<br>';
+			echo 'hasLongEnoughWords		: ' . (int) $hasLongEnoughWords . '<br>';
+			echo 'hasTooShortWords			: ' . (int) $hasTooShortWords . '<br>';
+			echo 'hasNoStopWords			: ' . (int) $hasNoStopWords . '<br>';
+			echo 'hasSearchOpAsTerm			: ' . (int) $hasSearchOpAsTerm . '<br>';
+			echo 'hasPhraseWithOnlyInvalids : ' . (int) $hasPhraseWithOnlyInvalids . '<br>';
+			echo 'searchmode				: ' . $searchMode . '<br>';
+			// die(); */
 
-            /*
-             * Start constructing the query. Sometimes we construct the query
-             * both with a LIKE and with a MATCH statement
-             */
+			/*
+			 * Start constructing the query. Sometimes we construct the query
+			 * both with a LIKE and with a MATCH statement
+			 */
 			$queryPart = array();
-            $matchPart = '';
+			$matchPart = '';
 			if (($searchMode == 'normal') || ($searchMode == 'both-match-natural') || ($searchMode == 'both-match-boolean')) {
-                foreach($this->splitWords($searchValue) as $splittedTerm) {
-                    /*
-                     * If the term contains an boolean operator in the beginning,
-                     * strip it
-                     */
-                    $filteredTerm = trim($splittedTerm, "\"");
-                    $filteredTerm = ltrim($filteredTerm, "+-~<>");
-                    $filteredTerm = rtrim($filteredTerm, "*");
+				foreach($this->splitWords($searchValue) as $splittedTerm) {
+					/*
+					 * If the term contains an boolean operator in the beginning,
+					 * strip it
+					 */
+					$filteredTerm = trim($splittedTerm, "\"");
+					$filteredTerm = ltrim($filteredTerm, "+-~<>");
+					$filteredTerm = rtrim($filteredTerm, "*");
 
-                    if (!empty($filteredTerm)) {
-                        $filteredTerm = str_replace(' ','_',$filteredTerm );
-                        $queryPart[] = ' ' . $field . " LIKE " . $this->_db->safe('%' . $filteredTerm . '%');
-                    } # if
-                } # foreach
+					if (!empty($filteredTerm)) {
+						$filteredTerm = str_replace(' ','_',$filteredTerm );
+						$queryPart[] = ' ' . $field . " LIKE " . $this->_db->safe('%' . $filteredTerm . '%');
+					} # if
+				} # foreach
+				
+				/*
+				* Add the textqueries with an AND per search term
+				*/
+				$filterValueSql[] = ' (' . implode(' AND ', $queryPart) . ') ';
+
 			} # if
 			
 			if (($searchMode == 'match-natural') || ($searchMode == 'both-match-natural')) {
 				/* Natural language mode always defaults in MySQL 5.0 en 5.1, but cannot be explicitly defined in MySQL 5.0 */
-				$matchPart = " MATCH(" . $field . ") AGAINST (" . $this->_db->safe($searchValue) . ")";
-				$queryPart[] = $matchPart;
+				//$matchPart = " MATCH(" . $field . ") AGAINST (" . $this->_db->safe($searchValue) . ")";
+				//$queryPart[] = $matchPart;
+				$matchPartNat[$field][] = $searchValue;
 			} # if 
 
-            /*
-             * Boolean searches with required or missing terms, will never match if the terms are
-             * stopwords because stopwords are not in the index and cannot be found
-             */
+			/*
+			 * Boolean searches with required or missing terms, will never match if the terms are
+			 * stopwords because stopwords are not in the index and cannot be found
+			 */
 			if (($searchMode == 'match-boolean') || ($searchMode == 'both-match-boolean')) {
-                $matchPart = " MATCH(" . $field . ") AGAINST (" . $this->_db->safe($searchValue) . " IN BOOLEAN MODE)";
-				$queryPart[] = $matchPart;
+				$matchPartBool[$field][] = $searchValue;
+				// $matchPart = " MATCH(" . $field . ") AGAINST (" . $this->_db->safe($searchValue) . " IN BOOLEAN MODE)";
+				// $queryPart[] = $matchPart;
 			} # if
-
-            /*
-             * Add the textqueries with an AND per search term
-             */
-            $filterValueSql[] = ' (' . implode(' AND ', $queryPart) . ') ';
 
 			/*
 			 * We add these extended textqueries as a column to the filterlist
 			 * and use it as a relevance column. This allows us to sort on
 			 * relevance
 			 */
-			if ($searchMode != 'normal') {
+			// if ($searchMode != 'normal') {
+			if (($searchMode == 'match-natural') || ($searchMode == 'both-match-natural')) {
 				/*
 				 * if we get multiple textsearches, we sort them per order
 				 * in the system
@@ -333,12 +340,48 @@ class dbfts_mysql extends dbfts_abs {
 			}  # if
 		} # foreach
 
+		foreach (array_keys($matchPartNat) as $field) {
+			foreach (array($matchPartNat[$field]) as $searchValues) {
+				$implodedSearchValues = "(" . implode(") (", $searchValues) . ")";
+				$matchPart = " MATCH(" . $field . ") AGAINST (" . $this->_db->safe($implodedSearchValues) . ")";
+				$filterValueSql[] = $matchPart ;
+				
+				// echo 'matchPart					 : ' . $matchPart . '<br>';				
+			
+				$tmpSortCounter = count($additionalFields) + count($addFields);
+				$addFields[] = $matchPart . ' AS searchrelevancy' . $tmpSortCounter;
+				$sortFields[] = array('field' => 'searchrelevancy' . $tmpSortCounter,
+									  'direction' => 'DESC',
+									  'autoadded' => true,
+									  'friendlyname' => null);
+
+			}
+		} # foreach
+
+		foreach (array_keys($matchPartBool) as $field) {
+			foreach (array($matchPartBool[$field]) as $searchValues) {
+				$implodedSearchValues = "(" . implode(") (", $searchValues) . ")";
+				$matchPart = " MATCH(" . $field . ") AGAINST (" . $this->_db->safe($implodedSearchValues) . " IN BOOLEAN MODE)";
+				$filterValueSql[] = $matchPart ;
+				
+				// echo 'matchPart					 : ' . $matchPart . '<br>';				
+			
+				$tmpSortCounter = count($additionalFields) + count($addFields);
+				$addFields[] = $matchPart . ' AS searchrelevancy' . $tmpSortCounter;
+				$sortFields[] = array('field' => 'searchrelevancy' . $tmpSortCounter,
+									  'direction' => 'DESC',
+									  'autoadded' => true,
+									  'friendlyname' => null);
+
+			}
+		} # foreach
+
 		SpotTiming::stop(__CLASS__ . '::' . __FUNCTION__, array($filterValueSql,$addFields,$sortFields));
 
-        //var_dump($filterValueSql);
-        //var_dump($addFields);
-        //var_dump($sortFields);
-        //die();
+		// var_dump($filterValueSql);
+		// var_dump($addFields);
+		// var_dump($sortFields);
+		// die();
 
 		return array('filterValueSql' => $filterValueSql,
 					 'additionalTables' => array(),
